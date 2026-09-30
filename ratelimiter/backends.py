@@ -23,17 +23,18 @@ class InMemoryBackend(RateLimitBackend):
     """Простое окно в памяти процесса – для тестов и одного воркера."""
 
     def __init__(self) -> None:
-        self._counters: dict[str, tuple[int, float]] = {}
+        self._counters: dict[str, tuple[int, float, int]] = {}
 
     async def hit(self, key: str, limit: int, window_seconds: int) -> LimitResult:
         now = time.monotonic()
-        count, window_start = self._counters.get(key, (0, now))
+        count, window_start, _ = self._counters.get(key, (0, now, window_seconds))
 
         if now - window_start >= window_seconds:
             count, window_start = 0, now
 
         count += 1
-        self._counters[key] = (count, window_start)
+        self._counters[key] = (count, window_start, window_seconds)
+        self._evict_expired(now)
 
         reset_after = window_seconds - (now - window_start)
         return LimitResult(
@@ -41,6 +42,14 @@ class InMemoryBackend(RateLimitBackend):
             remaining=max(0, limit - count),
             reset_after=max(0.0, reset_after),
         )
+
+    def _evict_expired(self, now: float) -> None:
+        expired = [
+            k for k, (_, window_start, window_seconds) in self._counters.items()
+            if now - window_start >= window_seconds
+        ]
+        for k in expired:
+            del self._counters[k]
 
 
 class RedisBackend(RateLimitBackend):
