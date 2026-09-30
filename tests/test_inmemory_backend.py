@@ -37,6 +37,18 @@ def test_inmemory_backend_separate_keys():
     assert b.allowed is True
 
 
+def test_inmemory_backend_evicts_expired_keys():
+    async def run():
+        backend = InMemoryBackend()
+        await backend.hit("old", limit=1, window_seconds=0.05)
+        await asyncio.sleep(0.06)
+        await backend.hit("new", limit=1, window_seconds=10)
+        return backend
+
+    backend = asyncio.run(run())
+    assert "old" not in backend._counters
+
+
 def test_inmemory_backend_resets_after_window():
     async def run():
         backend = InMemoryBackend()
